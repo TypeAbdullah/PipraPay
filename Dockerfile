@@ -12,7 +12,10 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install pdo pdo_mysql gd bcmath
 
 # Enable Apache mod_rewrite (critical for clean routing/API paths)
-RUN a2enmod rewrite
+# FIX: Force disable conflicting MPMs and ensure prefork is enabled
+RUN a2enmod rewrite \
+    && a2dismod mpm_event mpm_worker || true \
+    && a2enmod mpm_prefork
 
 # Copy your PipraPay application files into the server directory
 COPY . /var/www/html/
