@@ -2,14 +2,19 @@
 FROM php:8.2-apache
 
 # Install required system dependencies and PHP extensions for PipraPay
+# Added libmagickwand-dev (for Imagick) and libzip-dev (for ZipArchive)
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
+    libmagickwand-dev \
+    libzip-dev \
     zip \
     unzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_mysql gd bcmath
+    && docker-php-ext-install pdo pdo_mysql gd bcmath zip \
+    && pecl install imagick \
+    && docker-php-ext-enable imagick
 
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
@@ -17,7 +22,7 @@ RUN a2enmod rewrite
 # FIX 1: Allow and read the .htaccess file in your root folder
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 
-# FIX 2: SSL Reverse Proxy Fix for Railway (Forces PHP to generate "https://" links for CSS assets)
+# FIX 2: SSL Reverse Proxy Fix for Railway (Forces PHP to recognize HTTPS)
 RUN echo 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on' >> /etc/apache2/apache2.conf
 
 # Copy your PipraPay application files into the server directory
