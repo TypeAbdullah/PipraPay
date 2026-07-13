@@ -11,11 +11,8 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo pdo_mysql gd bcmath
 
-# Enable Apache mod_rewrite (critical for clean routing/API paths)
-# FIX: Force disable conflicting MPMs and ensure prefork is enabled
-RUN a2enmod rewrite \
-    && a2dismod mpm_event mpm_worker || true \
-    && a2enmod mpm_prefork
+# Enable Apache mod_rewrite
+RUN a2enmod rewrite
 
 # Copy your PipraPay application files into the server directory
 COPY . /var/www/html/
@@ -23,6 +20,13 @@ COPY . /var/www/html/
 # Set correct permissions for the Apache web directory
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
+
+# FORCE FIX: Manually delete conflicting MPM configuration files 
+# to ensure Apache only sees mpm_prefork at runtime.
+RUN rm -f /etc/apache2/mods-enabled/mpm_event.load \
+    && rm -f /etc/apache2/mods-enabled/mpm_event.conf \
+    && rm -f /etc/apache2/mods-enabled/mpm_worker.load \
+    && rm -f /etc/apache2/mods-enabled/mpm_worker.conf
 
 # Expose port 80 for traffic
 EXPOSE 80
