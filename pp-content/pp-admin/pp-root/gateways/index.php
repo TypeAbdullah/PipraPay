@@ -630,6 +630,10 @@
     }
     defaultLoad('modal-createItem');
 
+    if (typeof initChoices === 'function') {
+        initChoices('.js-select');
+    }
+
 
 
     //extra requirement 

@@ -1,0 +1,5 @@
+.env
+pp-config.php
+pp-temp-config.php
+.maintenance
+.claude/

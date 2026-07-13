@@ -118,7 +118,7 @@
     */
 
     if(!file_exists(__DIR__ . '/.maintenance')){
-        if(file_exists(__DIR__ . '/pp-config.php')){
+        if(pp_is_installed()){
             if (isset($requriemntnoneedchecked) && $requriemntnoneedchecked === true) {
                 switch ($route) {
                     case '404':
@@ -2082,16 +2082,10 @@
                 }
             }
         }else{
-            if(file_exists(__DIR__ . '/pp-content/pp-install/index.php')){
+            if(pp_installer_enabled() && file_exists(__DIR__ . '/pp-content/pp-install/index.php')){
                 require __DIR__ . '/pp-content/pp-install/index.php';
             }else{
-                if(file_exists(__DIR__ . '/pp-404.php')){
-                    http_response_code(404);
-                    require __DIR__ . '/pp-404.php';
-                }else{
-                    http_response_code(403);
-                    exit('Direct access not allowed');
-                }
+                echo '<script>location.href="login";</script>';
             }
         }
     }else{

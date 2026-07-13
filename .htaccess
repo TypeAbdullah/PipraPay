@@ -2,6 +2,9 @@ RewriteEngine On
 
 Options -Indexes
 
+# Block access to .env and other dotfiles
+RewriteRule (^|/)\.(env|git|htaccess) - [F,L]
+
 RewriteCond %{THE_REQUEST} \s/+(.+?\.php)[\s?] [NC]
 RewriteCond %1 !^index\.php$
 RewriteRule ^ - [F,L]

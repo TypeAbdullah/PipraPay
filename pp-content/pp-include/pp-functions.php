@@ -11,7 +11,125 @@
     }
 
     $pp_functions_loaded = true;
-    
+
+    define('PP_BASE_PATH', dirname(__DIR__, 2));
+
+    function pp_load_dotenv() {
+        static $loaded = null;
+        if ($loaded !== null) {
+            return $loaded;
+        }
+
+        $loaded = [];
+        $envFile = PP_BASE_PATH . '/.env';
+
+        if (!is_file($envFile) || !is_readable($envFile)) {
+            return $loaded;
+        }
+
+        foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#' || strpos($line, '=') === false) {
+                continue;
+            }
+
+            [$key, $value] = explode('=', $line, 2);
+            $key = trim($key);
+            $value = trim($value);
+
+            if (strlen($value) >= 2 &&
+                (($value[0] === '"' && substr($value, -1) === '"') ||
+                 ($value[0] === "'" && substr($value, -1) === "'"))) {
+                $value = substr($value, 1, -1);
+            }
+
+            $loaded[$key] = $value;
+        }
+
+        return $loaded;
+    }
+
+    function pp_env($key, $default = null) {
+        // Real environment variables (e.g. set in the Railway/host dashboard)
+        // take precedence over the .env file.
+        $value = getenv($key);
+        if ($value !== false) {
+            return $value;
+        }
+        if (isset($_ENV[$key])) {
+            return $_ENV[$key];
+        }
+        if (isset($_SERVER[$key])) {
+            return $_SERVER[$key];
+        }
+
+        $env = pp_load_dotenv();
+        return array_key_exists($key, $env) ? $env[$key] : $default;
+    }
+
+    // Populate DB globals from .env when present, otherwise from pp-config.php.
+    // Returns true when a database configuration source was found.
+    function pp_load_db_config() {
+        global $db_host, $db_port, $db_user, $db_pass, $db_name, $db_prefix;
+
+        if (pp_env('DB_HOST') !== null) {
+            $db_host   = pp_env('DB_HOST');
+            $db_port   = pp_env('DB_PORT', '3306');
+            $db_user   = pp_env('DB_USER', '');
+            $db_pass   = pp_env('DB_PASSWORD', '');
+            $db_name   = pp_env('DB_NAME', '');
+            $db_prefix = pp_env('DB_PREFIX', 'pp_');
+            return true;
+        }
+
+        $configFile = PP_BASE_PATH . '/pp-config.php';
+        if (file_exists($configFile)) {
+            require $configFile;
+            return true;
+        }
+
+        return false;
+    }
+
+    // The installer wizard is skipped when the app already has a usable DB
+    // configuration (via .env or pp-config.php), or when INSTALLER=false in .env.
+    function pp_is_installed() {
+        // Explicit override: never show the installer (e.g. a migrated database
+        // that already contains the schema + admin).
+        if (strtolower((string) pp_env('INSTALLER', 'true')) === 'false') {
+            return true;
+        }
+        // Legacy config file present.
+        if (file_exists(PP_BASE_PATH . '/pp-config.php')) {
+            return true;
+        }
+        // Env DB configured: only "installed" once an admin account exists,
+        // so a fresh empty database still routes through the installer.
+        if (pp_env('DB_HOST') !== null) {
+            return pp_admin_exists();
+        }
+        return false;
+    }
+
+    // Returns true when the admin table exists and has at least one row.
+    function pp_admin_exists() {
+        global $db_prefix;
+
+        $prefix = $db_prefix ?: pp_env('DB_PREFIX', 'pp_');
+
+        try {
+            $pdo = connectDatabase();
+            $stmt = $pdo->query("SELECT 1 FROM `{$prefix}admin` LIMIT 1");
+            return $stmt->fetchColumn() !== false;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    function pp_installer_enabled() {
+        return strtolower((string) pp_env('INSTALLER', 'true')) !== 'false';
+    }
+
     function pp_site_url($type = "Full") {
         // Detect protocol
         $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' 

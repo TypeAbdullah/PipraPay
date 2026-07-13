@@ -4,23 +4,8 @@
         exit('Direct access not allowed');
     }
 
-    if(isset($_POST['test_databse_request'])){
-        $host        = $_POST['dbHost'] ?? '';
-        $port        = $_POST['dbPort'] ?? '3306';
-        $dbname      = $_POST['dbName'] ?? '';
-        $username    = $_POST['dbUsername'] ?? '';
-        $password    = $_POST['dbPassword'] ?? '';
-        $tablePrefix = $_POST['tablePrefix'] ?? '';
-
-        if (!$host || !$dbname || !$username) {
-            echo json_encode(['status' => 'false', 'message' => 'Please fill in all required fields.']);
-            exit;
-        }
-
-        if (!in_array('mysql', PDO::getAvailableDrivers())) {
-            echo json_encode(['status' => 'false', 'message' => 'PDO MySQL driver is not enabled on this server.']);
-            exit;
-        }
+    if(isset($_POST['import_schema_request'])){
+        header('Content-Type: application/json');
 
         if($requriemntnoneedchecked == false){
             echo json_encode([
@@ -31,27 +16,46 @@
             exit;
         }
 
+        if (!in_array('mysql', PDO::getAvailableDrivers())) {
+            echo json_encode(['status' => 'false', 'title' => 'Driver Missing', 'message' => 'PDO MySQL driver is not enabled on this server.']);
+            exit;
+        }
+
+        $host = pp_env('DB_HOST');
+        if ($host === null || $host === '') {
+            echo json_encode([
+                'status'  => 'false',
+                'title'   => 'Database Not Configured',
+                'message' => 'No MySQL database is configured. Set DB_HOST, DB_NAME, DB_USER and DB_PASSWORD in your .env file (or hosting dashboard) and reload this page.'
+            ]);
+            exit;
+        }
+
+        $port   = pp_env('DB_PORT', '3306');
+        $dbname = pp_env('DB_NAME', '');
+        $user   = pp_env('DB_USER', '');
+        $pass   = pp_env('DB_PASSWORD', '');
+        $prefix = pp_env('DB_PREFIX', 'pp_');
+
         try {
             $dsn = "mysql:host=$host;port=$port;dbname=$dbname;charset=utf8mb4";
-            $pdo = new PDO($dsn, $username, $password, [
+            $pdo = new PDO($dsn, $user, $pass, [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_AUTOCOMMIT => false
             ]);
 
-            // Read SQL file
             $sqlContent = file_get_contents(__DIR__ . '/db.sql');
             if ($sqlContent === false) {
                 throw new Exception("SQL file not found or empty.");
             }
 
-            if (!empty($tablePrefix) && $tablePrefix !== 'pp_') {
-                $sqlContent = str_replace('pp_', $tablePrefix, $sqlContent);
+            if (!empty($prefix) && $prefix !== 'pp_') {
+                $sqlContent = str_replace('pp_', $prefix, $sqlContent);
             }
 
             $queries = array_filter(array_map('trim', explode(";\n", $sqlContent)));
 
-            // Start transaction AFTER SQL is prepared
             $pdo->beginTransaction();
 
             foreach ($queries as $query) {
@@ -64,19 +68,7 @@
                 $pdo->commit();
             }
 
-            // Write config file
-            $configContent = "<?php
-    \$db_host = '".addslashes($host). "';
-    \$db_port = '" . addslashes($port) . "'; 
-    \$db_user = '".addslashes($username)."';
-    \$db_pass = '".addslashes($password)."';
-    \$db_name = '".addslashes($dbname)."';
-    \$db_prefix = '".addslashes($tablePrefix)."';
-?>";
-
-            file_put_contents(__DIR__ . '/../../pp-temp-config.php', $configContent);
-
-            echo json_encode(['status' => 'true', 'title' => 'Imported successfully', 'message' => 'Database connection verified and imported successfully.']);
+            echo json_encode(['status' => 'true', 'title' => 'Imported successfully', 'message' => 'Database connection verified and schema imported successfully.']);
         } catch (Throwable $e) {
             if (isset($pdo) && $pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -136,29 +128,6 @@
                     $values = [$brand_id, 'BDT', '৳', getCurrentDatetime('Y-m-d H:i:s'), getCurrentDatetime('Y-m-d H:i:s')];
 
                     insertData($db_prefix.'currency', $columns, $values);
-
-                    $tempFile  = __DIR__ . '/../../pp-temp-config.php';
-                    $finalFile = __DIR__ . '/../../pp-config.php';
-
-                    if (!file_exists($tempFile)) {
-                        echo json_encode(['status' => 'false', 'message' => 'Temp config file not found.']);
-                        exit;
-                    }
-
-                    // Read temp content
-                    $configContent = file_get_contents($tempFile);
-                    if ($configContent === false) {
-                        echo json_encode(['status' => 'false', 'message' => 'Failed to read temp config file.']);
-                        exit;
-                    }
-
-                    // Write final config
-                    if (file_put_contents($finalFile, $configContent) === false) {
-                        echo json_encode(['status' => 'false', 'message' => 'Failed to create final config file.']);
-                        exit;
-                    }
-
-                    unlink($tempFile);
 
                     echo json_encode(['status' => "true", 'message' => 'Install Completed.']);
                 }else{
@@ -299,94 +268,48 @@
                 </div>
             </div>
 
-            <!-- Page 2: Database Configuration -->
+            <!-- Page 2: Database Schema Import -->
             <div class="card" id="page2">
                 <div class="card-header d-grid">
-                    <h3 class="card-title mb-1">Database Configuration</h3>
-                    <p class="card-subtitle">Enter your database connection details.</p>
+                    <h3 class="card-title mb-1">Database Setup</h3>
+                    <p class="card-subtitle">Your database credentials are read from the environment (.env).</p>
                 </div>
 
                 <div class="card-body">
-                    <form class="database-config-extra" id="dbForm">
-                        <div class="row gy-3">
-                            <!-- Database Driver -->
-                            <div class="col-12">
-                                <div class="form-group">
-                                    <label class="form-label d-block mb-2">Database Driver</label>
+                    <?php
+                        $env_db_host   = pp_env('DB_HOST');
+                        $env_db_name   = pp_env('DB_NAME', '');
+                        $env_db_prefix = pp_env('DB_PREFIX', 'pp_');
+                        $env_db_ready  = !($env_db_host === null || $env_db_host === '');
+                    ?>
 
-                                    <div class="row gy-3">
-                                        <div class="col-6">
-                                            <div class="form-control-wrap p-2 border rounded" style="height: 40px;">
-                                                <div class="form-check form-check-inline" style="margin-top: -2px;">
-                                                    <input class="form-check-input" type="checkbox" id="driverMysql" name="dbDriver" value="mysql" checked>
-                                                    <label class="form-check-label" for="driverMysql">MySQL / MariaDB</label>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="dbHost" class="form-label">Database Host</label>
-                                    <div class="form-control-wrap">
-                                        <input type="text" class="form-control" id="dbHost" 
-                                                placeholder="localhost" value="localhost" required>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="dbPort" class="form-label">Database Port</label>
-                                    <div class="form-control-wrap">
-                                        <input type="text" class="form-control" id="dbPort" 
-                                                placeholder="3306" value="3306" required>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="dbName" class="form-label">Database Name</label>
-                                    <div class="form-control-wrap">
-                                        <input type="text" class="form-control" id="dbName" 
-                                                placeholder="Enter database name" required>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="dbUsername" class="form-label">Database Username</label>
-                                    <div class="form-control-wrap">
-                                        <input type="text" class="form-control" id="dbUsername" 
-                                                placeholder="Enter username" required>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="form-group">
-                                    <label for="dbPassword" class="form-label">Database Password</label>
-                                    <div class="form-control-wrap">
-                                        <input type="password" class="form-control" id="dbPassword" 
-                                                placeholder="Enter password">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="form-group">
-                                    <label for="tablePrefix" class="form-label">Table Prefix (Optional)</label>
-                                    <div class="form-control-wrap">
-                                        <input type="text" class="form-control" id="tablePrefix" 
-                                                placeholder="pp_" value="pp_">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <button type="button" class="btn btn-outline-primary w-100 test-connection-btn" id="btnTestConnection">Check & Import</button>
-                            </div>
+                    <?php if($env_db_ready){ ?>
+                        <div class="d-flex justify-content-between align-items-center border rounded p-3 mb-2">
+                            <div><strong>Database Host</strong></div>
+                            <span class="text-muted"><?= htmlspecialchars($env_db_host) ?></span>
                         </div>
-                    </form>
+                        <div class="d-flex justify-content-between align-items-center border rounded p-3 mb-2">
+                            <div><strong>Database Name</strong></div>
+                            <span class="text-muted"><?= htmlspecialchars($env_db_name) ?></span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center border rounded p-3 mb-2">
+                            <div><strong>Table Prefix</strong></div>
+                            <span class="text-muted"><?= htmlspecialchars($env_db_prefix) ?></span>
+                        </div>
 
+                        <div class="alert alert-info mt-3 mb-3">
+                            Click below to connect to this database and import the PipraPay schema. Existing tables with the same prefix will be reused.
+                        </div>
+
+                        <div class="col-12">
+                            <button type="button" class="btn btn-outline-primary w-100 import-schema-btn" id="btnImportSchema">Check &amp; Import Schema</button>
+                        </div>
+                    <?php }else{ ?>
+                        <div class="alert alert-danger mb-0">
+                            <h4 class="mb-1">No database configured</h4>
+                            <p class="mb-0">No MySQL database is configured. Set <code>DB_HOST</code>, <code>DB_NAME</code>, <code>DB_USER</code> and <code>DB_PASSWORD</code> in your <code>.env</code> file (or your hosting dashboard, e.g. Railway) and reload this page.</p>
+                        </div>
+                    <?php } ?>
 
                     <div class="row mt-4">
                         <div class="col-12">
@@ -569,55 +492,20 @@
             showStep(2);
         });
 
-        <?php
-           if(file_exists(__DIR__ . '/../../pp-temp-config.php')){
-        ?>
-              showStep(3);
-        <?php
-           }
-        ?>
-
         $(document).ready(function() {
-            $('.database-config-extra input[name="dbDriver"]').on('change', function () {
-                $('.database-config-extra input[name="dbDriver"]').not(this).prop('checked', false);
-            });
+            $('#btnImportSchema').on('click', function () {
 
-            $('#btnTestConnection').on('click', function () {
-
-                let btn = $('.test-connection-btn');
-
-                let driver = $('input[name="dbDriver"]:checked').val();
-                if (!driver) {
-                    createToast({
-                        title: 'Action Required',
-                        description: 'Please select a database driver.',
-                        svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d63939" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-exclamation-circle"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M12 9v4" /><path d="M12 16v.01" /></svg>`,
-                        timeout: 6000,
-                        top: 20
-                    });
-                    return;
-                }
-
-                let data = {
-                    test_databse_request: true,
-                    dbDriver: driver,
-                    dbHost: $('#dbHost').val(),
-                    dbPort: $('#dbPort').val(),
-                    dbName: $('#dbName').val(),
-                    dbUsername: $('#dbUsername').val(),
-                    dbPassword: $('#dbPassword').val(),
-                    tablePrefix: $('#tablePrefix').val()
-                };
+                let btn = $('.import-schema-btn');
 
                 btn.html('<span class="spinner-border spinner-border-sm"></span>');
 
                 $.ajax({
                     url: 'install',
                     type: 'POST',
-                    data: data,
+                    data: { import_schema_request: true },
                     dataType: 'json',
                     success: function (response) {
-                        btn.text('Check & Import');
+                        btn.text('Check & Import Schema');
 
                         if (response.status === true || response.status === 'true') {
                             $('#btnNextToAdmin').prop('disabled', false);
@@ -631,7 +519,7 @@
                             });
                         } else {
                             createToast({
-                                title: 'Action Required',
+                                title: `${response.title || 'Action Required'}`,
                                 description: `${response.message}`,
                                 svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d63939" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-exclamation-circle"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M12 9v4" /><path d="M12 16v.01" /></svg>`,
                                 timeout: 6000,
@@ -640,13 +528,7 @@
                         }
                     },
                     error: function (xhr, status, error) {
-                        console.log('AJAX Error:');
-                        console.log('Status:', status);
-                        console.log('Error:', error);            
-                        console.log('Response Text:', xhr.responseText); 
-                        console.log('XHR Object:', xhr);          
-
-                        btn.text('Check & Import');
+                        btn.text('Check & Import Schema');
 
                         createToast({
                             title: 'Action Required',

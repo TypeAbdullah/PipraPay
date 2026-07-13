@@ -1,0 +1,7 @@
+.git
+.gitignore
+.env
+pp-config.php
+pp-temp-config.php
+*.md
+.github

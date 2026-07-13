@@ -155,8 +155,7 @@
         }
     }
 
-    if(file_exists(__DIR__ . '/../../pp-config.php')){
-        require __DIR__ . '/../../pp-config.php';
+    if(pp_load_db_config()){
 
         if($requriemntnoneedchecked == true){
             $path_payment = ($value = get_env('geneal-application-settings-paymentPath')) && $value !== '--' ? $value : 'payment';
@@ -263,7 +262,7 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
     $global_user_2fa = false;
     $global_two_fector_validate = false;
 
-    if(file_exists(__DIR__ . '/../../pp-config.php')){
+    if(pp_is_installed()){
         if(getCookie('pp_admin') !== null){
             $pp_admin = escape_string(getCookie('pp_admin'));
 

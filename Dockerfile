@@ -2,17 +2,19 @@
 FROM php:8.2-apache
 
 # Install required system dependencies and PHP extensions for PipraPay
-# Added libmagickwand-dev (for Imagick) and libzip-dev (for ZipArchive)
+# Added libmagickwand-dev (for Imagick), libzip-dev (for ZipArchive)
+# and libonig-dev (for mbstring)
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
     libmagickwand-dev \
     libzip-dev \
+    libonig-dev \
     zip \
     unzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_mysql gd bcmath zip \
+    && docker-php-ext-install pdo pdo_mysql gd bcmath zip mbstring exif \
     && pecl install imagick \
     && docker-php-ext-enable imagick
 
@@ -25,6 +27,15 @@ RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/Allo
 # FIX 2: SSL Reverse Proxy Fix for Railway (Forces PHP to recognize HTTPS)
 RUN echo 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on' >> /etc/apache2/apache2.conf
 
+# Recommended PHP runtime settings
+RUN { \
+        echo 'allow_url_fopen = On'; \
+        echo 'file_uploads = On'; \
+        echo 'upload_max_filesize = 64M'; \
+        echo 'post_max_size = 64M'; \
+        echo 'memory_limit = 256M'; \
+    } > /usr/local/etc/php/conf.d/piprapay.ini
+
 # Copy your PipraPay application files into the server directory
 COPY . /var/www/html/
 
@@ -36,6 +47,6 @@ RUN chown -R www-data:www-data /var/www/html \
 # Expose port 80 for traffic
 EXPOSE 80
 
-# RUNTIME FIX: Deletes conflicting MPMs right when the container turns on, 
+# RUNTIME FIX: Deletes conflicting MPMs right when the container turns on,
 # then boots Apache normally. This defeats any hidden Railway configuration overrides.
 CMD sh -c "rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_worker.* && apache2-foreground"
