@@ -14,13 +14,16 @@ RUN apt-get update && apt-get install -y \
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
 
-# FIX: Force Apache to allow and read the .htaccess file in your root folder
+# FIX 1: Allow and read the .htaccess file in your root folder
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+
+# FIX 2: SSL Reverse Proxy Fix for Railway (Forces PHP to generate "https://" links for CSS assets)
+RUN echo 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on' >> /etc/apache2/apache2.conf
 
 # Copy your PipraPay application files into the server directory
 COPY . /var/www/html/
 
-# FIX FOR CSS/ASSETS: Set strict permissions so Apache can access the root assets/ folder
+# FIX 3: Set proper directory and file permissions for assets
 RUN chown -R www-data:www-data /var/www/html \
     && find /var/www/html -type d -exec chmod 755 {} \; \
     && find /var/www/html -type f -exec chmod 644 {} \;
