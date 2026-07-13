@@ -1,7 +1,5 @@
-# Use an official PHP image with Apache pre-installed (PHP 8.2)
 FROM php:8.2-apache
 
-# Install required system dependencies and PHP extensions for PipraPay
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
@@ -11,22 +9,15 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo pdo_mysql gd bcmath
 
-# Enable Apache mod_rewrite
 RUN a2enmod rewrite
 
-# Copy your PipraPay application files into the server directory
+# FORCE FIX: Nuke any event/worker configurations that Railway or custom configs try to inject
+RUN rm -f /etc/apache2/mods-enabled/mpm_event.* \
+    && rm -f /etc/apache2/mods-enabled/mpm_worker.* \
+    && a2enmod mpm_prefork
+
 COPY . /var/www/html/
 
-# Set correct permissions for the Apache web directory
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html
+RUN chown -R www-data:www-data /var/www/html && chmod -R 755 /var/www/html
 
-# FORCE FIX: Manually delete conflicting MPM configuration files 
-# to ensure Apache only sees mpm_prefork at runtime.
-RUN rm -f /etc/apache2/mods-enabled/mpm_event.load \
-    && rm -f /etc/apache2/mods-enabled/mpm_event.conf \
-    && rm -f /etc/apache2/mods-enabled/mpm_worker.load \
-    && rm -f /etc/apache2/mods-enabled/mpm_worker.conf
-
-# Expose port 80 for traffic
 EXPOSE 80
