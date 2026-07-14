@@ -16,64 +16,32 @@
             exit;
         }
 
-        if (!in_array('mysql', PDO::getAvailableDrivers())) {
-            echo json_encode(['status' => 'false', 'title' => 'Driver Missing', 'message' => 'PDO MySQL driver is not enabled on this server.']);
+        if (!class_exists('MongoDB\Client')) {
+            echo json_encode(['status' => 'false', 'title' => 'Driver Missing', 'message' => 'MongoDB PHP extension is not loaded on this server.']);
             exit;
         }
 
-        $host = pp_env('DB_HOST');
+        $host = pp_env('DB_HOST'); // MongoDB URI
         if ($host === null || $host === '') {
             echo json_encode([
                 'status'  => 'false',
                 'title'   => 'Database Not Configured',
-                'message' => 'No MySQL database is configured. Set DB_HOST, DB_NAME, DB_USER and DB_PASSWORD in your .env file (or hosting dashboard) and reload this page.'
+                'message' => 'No MongoDB URI is configured. Set DB_HOST and DB_NAME in your .env file and reload this page.'
             ]);
             exit;
         }
 
-        $port   = pp_env('DB_PORT', '3306');
-        $dbname = pp_env('DB_NAME', '');
-        $user   = pp_env('DB_USER', '');
-        $pass   = pp_env('DB_PASSWORD', '');
-        $prefix = pp_env('DB_PREFIX', 'pp_');
+        $dbname = pp_env('DB_NAME', 'piprapay');
 
         try {
-            $dsn = "mysql:host=$host;port=$port;dbname=$dbname;charset=utf8mb4";
-            $pdo = new PDO($dsn, $user, $pass, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_AUTOCOMMIT => false
-            ]);
+            // Test MongoDB Connection
+            $client = new MongoDB\Client($host);
+            $db = $client->selectDatabase($dbname);
+            // Ping the database to verify connection
+            $db->command(['ping' => 1]);
 
-            $sqlContent = file_get_contents(__DIR__ . '/db.sql');
-            if ($sqlContent === false) {
-                throw new Exception("SQL file not found or empty.");
-            }
-
-            if (!empty($prefix) && $prefix !== 'pp_') {
-                $sqlContent = str_replace('pp_', $prefix, $sqlContent);
-            }
-
-            $queries = array_filter(array_map('trim', explode(";\n", $sqlContent)));
-
-            $pdo->beginTransaction();
-
-            foreach ($queries as $query) {
-                if ($query !== '') {
-                    $pdo->exec($query);
-                }
-            }
-
-            if ($pdo->inTransaction()) {
-                $pdo->commit();
-            }
-
-            echo json_encode(['status' => 'true', 'title' => 'Imported successfully', 'message' => 'Database connection verified and schema imported successfully.']);
+            echo json_encode(['status' => 'true', 'title' => 'Connected successfully', 'message' => 'Database connection verified successfully.']);
         } catch (Throwable $e) {
-            if (isset($pdo) && $pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-
             echo json_encode(['status' => 'false', 'title' => 'Database Error', 'message' => $e->getMessage()]);
         }
         exit;
@@ -109,25 +77,42 @@
                     $a_id = generateItemID();
                     $brand_id = generateItemID();
 
-                    $columns = ['a_id', 'full_name', 'username', 'email', 'password', 'temp_password', 'created_date', 'updated_date'];
-                    $values = [$a_id, $adminName, $adminUsername, $adminEmail, $hashedPass, $temp_password, getCurrentDatetime('Y-m-d H:i:s'), getCurrentDatetime('Y-m-d H:i:s')];
+                    $adminDoc = [
+                        'a_id' => $a_id, 
+                        'full_name' => $adminName, 
+                        'username' => $adminUsername, 
+                        'email' => $adminEmail, 
+                        'password' => $hashedPass, 
+                        'temp_password' => $temp_password, 
+                        'created_date' => getCurrentDatetime('Y-m-d H:i:s'), 
+                        'updated_date' => getCurrentDatetime('Y-m-d H:i:s')
+                    ];
+                    insertData($db_prefix.'admin', $adminDoc);
 
-                    insertData($db_prefix.'admin', $columns, $values);
+                    $permDoc = [
+                        'brand_id' => $brand_id, 
+                        'a_id' => $a_id, 
+                        'permission' => json_encode(permissionSchema()), 
+                        'created_date' => getCurrentDatetime('Y-m-d H:i:s'), 
+                        'updated_date' => getCurrentDatetime('Y-m-d H:i:s')
+                    ];
+                    insertData($db_prefix.'permission', $permDoc);
 
-                    $columns = ['brand_id', 'a_id', 'permission', 'created_date', 'updated_date'];
-                    $values = [$brand_id, $a_id, json_encode(permissionSchema()), getCurrentDatetime('Y-m-d H:i:s'), getCurrentDatetime('Y-m-d H:i:s')];
+                    $brandDoc = [
+                        'brand_id' => $brand_id, 
+                        'created_date' => getCurrentDatetime('Y-m-d H:i:s'), 
+                        'updated_date' => getCurrentDatetime('Y-m-d H:i:s')
+                    ];
+                    insertData($db_prefix.'brands', $brandDoc);
 
-                    insertData($db_prefix.'permission', $columns, $values);
-
-                    $columns = ['brand_id', 'created_date', 'updated_date'];
-                    $values = [$brand_id, getCurrentDatetime('Y-m-d H:i:s'), getCurrentDatetime('Y-m-d H:i:s')];
-
-                    insertData($db_prefix.'brands', $columns, $values);
-
-                    $columns = ['brand_id', 'code', 'symbol', 'created_date', 'updated_date'];
-                    $values = [$brand_id, 'BDT', '৳', getCurrentDatetime('Y-m-d H:i:s'), getCurrentDatetime('Y-m-d H:i:s')];
-
-                    insertData($db_prefix.'currency', $columns, $values);
+                    $currDoc = [
+                        'brand_id' => $brand_id, 
+                        'code' => 'BDT', 
+                        'symbol' => '৳', 
+                        'created_date' => getCurrentDatetime('Y-m-d H:i:s'), 
+                        'updated_date' => getCurrentDatetime('Y-m-d H:i:s')
+                    ];
+                    insertData($db_prefix.'currency', $currDoc);
 
                     echo json_encode(['status' => "true", 'message' => 'Install Completed.']);
                 }else{

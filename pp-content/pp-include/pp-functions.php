@@ -198,34 +198,22 @@
     }
 
     function connectDatabase() {
-        global $db_host, $db_port, $db_user, $db_pass, $db_name;
-        $db_port = $db_port ?? 3306; // fallback
+        global $mongodb_uri, $mongodb_name;
+        
+        $mongodb_uri = $mongodb_uri ?? 'mongodb://127.0.0.1:27017';
+        $mongodb_name = $mongodb_name ?? 'piprapay';
 
-    try {
-            // Build DSN
-            $dsn = "mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4";
-
-            // Create PDO instance
-            $pdo = new PDO($dsn, $db_user, $db_pass, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,      // Throw exceptions on error
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch associative arrays
-                PDO::ATTR_EMULATE_PREPARES => false               // Use native prepared statements
-            ]);
-
-            // Safely drop ANSI_QUOTES so double-quoted values are treated as string literals, not identifiers
-            $stmtMode = $pdo->query("SELECT @@SESSION.sql_mode");
-            $currentMode = $stmtMode->fetchColumn();
-            if ($currentMode !== false) {
-                $modes = explode(',', $currentMode);
-                $filteredModes = array_filter($modes, function($mode) {
-                    return trim($mode) !== 'ANSI_QUOTES';
-                });
-                $newMode = implode(',', $filteredModes);
-                $pdo->exec("SET SESSION sql_mode = '$newMode'");
+        try {
+            // Check if MongoDB extension is loaded
+            if (!class_exists('MongoDB\Client')) {
+                die('MongoDB extension is not installed or loaded.');
             }
 
-            return $pdo;
-        } catch (PDOException $e) {
+            $client = new MongoDB\Client($mongodb_uri);
+            $db = $client->selectDatabase($mongodb_name);
+
+            return $db;
+        } catch (Exception $e) {
             die('Database connection failed: ' . $e->getMessage());
         }
     }
@@ -370,135 +358,79 @@
         return $value;
     }   
 
-    function getData($tableName, $coloum_name, $type = "* FROM", $params = []) {
-        $pdo = connectDatabase(); // PDO connection
-
-        // Build SQL
-        $sql = "SELECT $type `$tableName` $coloum_name";
+    function getData($tableName, $filter = [], $options = []) {
+        $db = connectDatabase();
 
         try {
-            $stmt = $pdo->prepare($sql); // prepare statement
+            $collection = $db->$tableName;
+            $cursor = $collection->find($filter, $options);
+            $data = $cursor->toArray();
 
-            // Bind parameters if any
-            foreach ($params as $key => $value) {
-                // Detect integer for proper PDO type
-                $pdoType = is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR;
-                $stmt->bindValue(is_int($key) ? $key + 1 : $key, $value, $pdoType);
-            }
-
-            $stmt->execute(); // execute
-
-            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            foreach ($data as &$row) {
-                foreach ($row as $col => $val) {
+            // Convert BSON Documents to associative arrays and handle ObjectIDs
+            $result = [];
+            foreach ($data as $doc) {
+                $arr = (array) $doc;
+                if (isset($arr['_id'])) {
+                    $arr['_id'] = (string) $arr['_id'];
+                }
+                foreach ($arr as $col => $val) {
                     if (is_null($val)) {
-                        $row[$col] = '--';
+                        $arr[$col] = '--';
                     }
                 }
+                $result[] = $arr;
             }
 
-            if ($data) {
-                return json_encode(['status' => true, 'response' => $data]);
+            if (!empty($result)) {
+                return json_encode(['status' => true, 'response' => $result]);
             } else {
                 return json_encode(['status' => false, 'response' => []]);
             }
 
-        } catch (PDOException $e) {
-            error_log("getData PDO Error: " . $e->getMessage());
+        } catch (Exception $e) {
+            error_log("getData MongoDB Error: " . $e->getMessage());
             return json_encode(['status' => false, 'response' => []]);
         }
     }
 
-    function insertData($tableName, $columns, $values) {
-        $pdo = connectDatabase(); 
+    function insertData($tableName, $document) {
+        $db = connectDatabase(); 
 
         try {
-            $stmtColumns = $pdo->prepare("SHOW COLUMNS FROM `$tableName`");
-            $stmtColumns->execute();
-            $tableCols = $stmtColumns->fetchAll(PDO::FETCH_ASSOC);
-
-            $finalColumns = [];
-            $finalValues = [];
-            $placeholders = [];
-
-            $userData = array_combine($columns, $values);
-
-            foreach ($tableCols as $col) {
-                $colName = $col['Field'];
-
-                if (strpos(strtolower($col['Extra']), 'auto_increment') !== false && !isset($userData[$colName])) {
-                    continue;
-                }
-
-                $finalColumns[] = $colName;
-                $placeholders[] = ":val_$colName";
-
-                if (isset($userData[$colName])) {
-                    $finalValues[$colName] = $userData[$colName];
-                } else {
-                    if ($col['Default'] !== null) {
-                        $finalValues[$colName] = $col['Default'];
-                    } else {
-                        $finalValues[$colName] = "--";
-                    }
-                }
-            }
-
-            $sql = "INSERT INTO `$tableName` (" . implode(", ", $finalColumns) . ") VALUES (" . implode(", ", $placeholders) . ")";
-            $stmt = $pdo->prepare($sql);
-
-            foreach ($finalValues as $colName => $val) {
-                $stmt->bindValue(":val_$colName", $val);
-            }
-
-            return $stmt->execute();
-
-        } catch (PDOException $e) {
+            $collection = $db->$tableName;
+            $result = $collection->insertOne($document);
+            return $result->getInsertedCount() === 1;
+        } catch (Exception $e) {
             error_log("Insert failed: " . $e->getMessage());
             return false;
         }
     }
 
-    function updateData($tableName, $columns, $values, $condition) {
-        $pdo = connectDatabase(); 
-
-        $setClauses = [];
-        foreach ($columns as $index => $col) {
-            $setClauses[] = "$col = :val$index";
-        }
-        $setString = implode(", ", $setClauses);
-
-        $sql = "UPDATE `$tableName` SET $setString WHERE $condition";
+    function updateData($tableName, $updateFields, $filter) {
+        $db = connectDatabase(); 
 
         try {
-            $stmt = $pdo->prepare($sql);
-
-            foreach ($values as $index => $value) {
-                if ($value === "" || is_null($value)) {
-                    $value = "--";
-                }
-
-                $stmt->bindValue(":val$index", $value);
-            }
-
-            return $stmt->execute(); 
-        } catch (PDOException $e) {
-            error_log("updateData PDO Error: " . $e->getMessage());
+            $collection = $db->$tableName;
+            $result = $collection->updateMany(
+                $filter,
+                ['$set' => $updateFields]
+            );
+            return $result->getModifiedCount() >= 0;
+        } catch (Exception $e) {
+            error_log("updateData MongoDB Error: " . $e->getMessage());
             return false;
         }
     }
 
-    function deleteData($tableName, $condition) {
-        $pdo = connectDatabase(); // PDO connection
-
-        $sql = "DELETE FROM `$tableName` WHERE $condition";
+    function deleteData($tableName, $filter) {
+        $db = connectDatabase();
 
         try {
-            $stmt = $pdo->prepare($sql);
-            return $stmt->execute(); // returns true/false
-        } catch (PDOException $e) {
-            error_log("deleteData PDO Error: " . $e->getMessage());
+            $collection = $db->$tableName;
+            $result = $collection->deleteMany($filter);
+            return $result->getDeletedCount() > 0;
+        } catch (Exception $e) {
+            error_log("deleteData MongoDB Error: " . $e->getMessage());
             return false;
         }
     }
@@ -1299,7 +1231,7 @@
     function reconcileByLongestChain($device_id, $sender_key, $type){
         global $db_prefix;
 
-        $resBalance = json_decode(getData($db_prefix.'balance_verification', 'WHERE device_id="'.$device_id.'" AND sender_key="'.$sender_key.'" AND type="'.$type.'"'),true);
+        $resBalance = json_decode(getData($db_prefix.'balance_verification', ['device_id' => $device_id, 'sender_key' => $sender_key, 'type' => $type]),true);
 
         $canonicalBalanceInt = 0;
 
@@ -1307,7 +1239,14 @@
             $canonicalBalanceInt = moneyToInt($resBalance['response'][0]['current_balance']);
         }
 
-        $res = json_decode(getData($db_prefix.'sms_data','WHERE device_id="'.$device_id.'" AND sender_key="'.$sender_key.'" AND type="'.$type.'" AND status IN ("approved","awaiting-review") AND source IN ("app") ORDER BY id ASC'),true);
+        $filter = [
+            'device_id' => $device_id,
+            'sender_key' => $sender_key,
+            'type' => $type,
+            'status' => ['$in' => ['approved', 'awaiting-review']],
+            'source' => ['$in' => ['app']]
+        ];
+        $res = json_decode(getData($db_prefix.'sms_data', $filter, ['sort' => ['id' => 1]]),true);
 
         $smsList = $res['response'] ?? [];
         if (count($smsList) < 1) return;
@@ -1367,7 +1306,7 @@
 
         if (!empty($idsToApprove)) {
 
-            updateData($db_prefix.'sms_data',['status','reason','updated_date'],['approved','--',getCurrentDatetime('Y-m-d H:i:s')],'id IN ('.implode(',', $idsToApprove).')');
+            updateData($db_prefix.'sms_data', ['status' => 'approved', 'reason' => '--', 'updated_date' => getCurrentDatetime('Y-m-d H:i:s')], ['id' => ['$in' => $idsToApprove]]);
         }
 
         $last = end($bestChain);
@@ -1375,7 +1314,7 @@
 
         $finalBalance = intToMoney($finalBalanceInt, 2);
 
-        updateData($db_prefix.'balance_verification', ['current_balance','updated_date'], [$finalBalance, getCurrentDatetime('Y-m-d H:i:s')], 'device_id="'.$device_id.'" AND sender_key="'.$sender_key.'" AND type="'.$type.'"');
+        updateData($db_prefix.'balance_verification', ['current_balance' => $finalBalance, 'updated_date' => getCurrentDatetime('Y-m-d H:i:s')], ['device_id' => $device_id, 'sender_key' => $sender_key, 'type' => $type]);
     }
 
     function permissionSchema(){
