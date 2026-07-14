@@ -21,7 +21,7 @@
             exit;
         }
 
-        $host = pp_env('DB_HOST'); // MongoDB URI
+        $host = pp_env('DB_HOST') ?: pp_env('MONGODB_URI') ?: pp_env('MONGO_URL'); // MongoDB URI
         if ($host === null || $host === '') {
             echo json_encode([
                 'status'  => 'false',
@@ -262,7 +262,7 @@
 
                 <div class="card-body">
                     <?php
-                        $env_db_host   = pp_env('DB_HOST');
+                        $env_db_host   = pp_env('DB_HOST') ?: pp_env('MONGODB_URI') ?: pp_env('MONGO_URL');
                         $env_db_name   = pp_env('DB_NAME', '');
                         $env_db_prefix = pp_env('DB_PREFIX', 'pp_');
                         $env_db_ready  = !($env_db_host === null || $env_db_host === '');
@@ -292,7 +292,7 @@
                     <?php }else{ ?>
                         <div class="alert alert-danger mb-0">
                             <h4 class="mb-1">No database configured</h4>
-                            <p class="mb-0">No MongoDB database is configured. Set <code>DB_HOST</code> (MongoDB URI) and <code>DB_NAME</code> in your <code>.env</code> file (or your hosting dashboard, e.g. Railway) and reload this page.</p>
+                            <p class="mb-0">No MongoDB database is configured. Set <code>MONGODB_URI</code> (or <code>DB_HOST</code>) and <code>DB_NAME</code> in your <code>.env</code> file (or your hosting dashboard, e.g. Railway) and reload this page.</p>
                         </div>
                     <?php } ?>
 

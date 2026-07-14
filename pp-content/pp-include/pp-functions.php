@@ -70,15 +70,14 @@
     // Populate DB globals from .env when present, otherwise from pp-config.php.
     // Returns true when a database configuration source was found.
     function pp_load_db_config() {
-        global $db_host, $db_port, $db_user, $db_pass, $db_name, $db_prefix;
+        global $db_host, $db_name, $db_prefix;
 
-        if (pp_env('DB_HOST') !== null) {
-            $db_host   = pp_env('DB_HOST');
-            $db_port   = pp_env('DB_PORT', '3306');
-            $db_user   = pp_env('DB_USER', '');
-            $db_pass   = pp_env('DB_PASSWORD', '');
-            $db_name   = pp_env('DB_NAME', '');
-            $db_prefix = pp_env('DB_PREFIX', 'pp_');
+        $host = pp_env('DB_HOST') ?: pp_env('MONGODB_URI') ?: pp_env('MONGO_URL');
+
+        if ($host !== null && $host !== '') {
+            $db_host   = $host;
+            $db_name   = pp_env('DB_NAME', 'piprapay');
+            $db_prefix = '';
             return true;
         }
 
@@ -115,12 +114,12 @@
     function pp_admin_exists() {
         global $db_prefix;
 
-        $prefix = $db_prefix ?: pp_env('DB_PREFIX', 'pp_');
+        $prefix = $db_prefix ?: '';
 
         try {
-            $pdo = connectDatabase();
-            $stmt = $pdo->query("SELECT 1 FROM `{$prefix}admin` LIMIT 1");
-            return $stmt->fetchColumn() !== false;
+            $db = connectDatabase();
+            $admin = $db->selectCollection($prefix . 'admin')->findOne([]);
+            return $admin !== null;
         } catch (Throwable $e) {
             return false;
         }
