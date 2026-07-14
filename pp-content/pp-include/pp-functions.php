@@ -212,8 +212,17 @@
                 PDO::ATTR_EMULATE_PREPARES => false               // Use native prepared statements
             ]);
 
-            // Drop ANSI_QUOTES so double-quoted values are treated as string literals, not identifiers
-            $pdo->exec("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'ANSI_QUOTES', '')");
+            // Safely drop ANSI_QUOTES so double-quoted values are treated as string literals, not identifiers
+            $stmtMode = $pdo->query("SELECT @@SESSION.sql_mode");
+            $currentMode = $stmtMode->fetchColumn();
+            if ($currentMode !== false) {
+                $modes = explode(',', $currentMode);
+                $filteredModes = array_filter($modes, function($mode) {
+                    return trim($mode) !== 'ANSI_QUOTES';
+                });
+                $newMode = implode(',', $filteredModes);
+                $pdo->exec("SET SESSION sql_mode = '$newMode'");
+            }
 
             return $pdo;
         } catch (PDOException $e) {
