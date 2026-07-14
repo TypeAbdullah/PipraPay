@@ -292,7 +292,7 @@
                     <?php }else{ ?>
                         <div class="alert alert-danger mb-0">
                             <h4 class="mb-1">No database configured</h4>
-                            <p class="mb-0">No MySQL database is configured. Set <code>DB_HOST</code>, <code>DB_NAME</code>, <code>DB_USER</code> and <code>DB_PASSWORD</code> in your <code>.env</code> file (or your hosting dashboard, e.g. Railway) and reload this page.</p>
+                            <p class="mb-0">No MongoDB database is configured. Set <code>DB_HOST</code> (MongoDB URI) and <code>DB_NAME</code> in your <code>.env</code> file (or your hosting dashboard, e.g. Railway) and reload this page.</p>
                         </div>
                     <?php } ?>
 
