@@ -212,6 +212,9 @@
                 PDO::ATTR_EMULATE_PREPARES => false               // Use native prepared statements
             ]);
 
+            // Drop ANSI_QUOTES so double-quoted values are treated as string literals, not identifiers
+            $pdo->exec("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'ANSI_QUOTES', '')");
+
             return $pdo;
         } catch (PDOException $e) {
             die('Database connection failed: ' . $e->getMessage());
