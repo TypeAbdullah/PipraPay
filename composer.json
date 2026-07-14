@@ -1,0 +1,15 @@
+{
+    "name": "piprapay/core",
+    "description": "PipraPay Payment Gateway Core",
+    "type": "project",
+    "require": {
+        "php": ">=8.2",
+        "ext-mongodb": "*",
+        "mongodb/mongodb": "^1.19"
+    },
+    "autoload": {
+        "psr-4": {
+            "PipraPay\\PaymentAPI\\": "wp-payment-api/src/"
+        }
+    }
+}

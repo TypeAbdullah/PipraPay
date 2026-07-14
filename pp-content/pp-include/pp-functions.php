@@ -14,6 +14,10 @@
 
     define('PP_BASE_PATH', dirname(__DIR__, 2));
 
+    if (file_exists(PP_BASE_PATH . '/vendor/autoload.php')) {
+        require_once PP_BASE_PATH . '/vendor/autoload.php';
+    }
+
     function pp_load_dotenv() {
         static $loaded = null;
         if ($loaded !== null) {
