@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y \
     unzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo pdo_mysql gd bcmath zip mbstring exif \
-    && pecl install imagick \
-    && docker-php-ext-enable imagick
+    && pecl install imagick mongodb \
+    && docker-php-ext-enable imagick mongodb
 
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
@@ -38,6 +38,12 @@ RUN { \
 
 # Copy your PipraPay application files into the server directory
 COPY . /var/www/html/
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Run Composer Install (ensures mongodb library is downloaded)
+RUN composer install --no-dev --optimize-autoloader
 
 # FIX 3: Set proper directory and file permissions for assets
 RUN chown -R www-data:www-data /var/www/html \
