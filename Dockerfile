@@ -43,7 +43,7 @@ COPY . /var/www/html/
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Run Composer Install (ensures mongodb library is downloaded)
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-mongodb
 
 # FIX 3: Set proper directory and file permissions for assets
 RUN chown -R www-data:www-data /var/www/html \
