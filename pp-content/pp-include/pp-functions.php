@@ -75,6 +75,7 @@
     // Returns true when a database configuration source was found.
     function pp_load_db_config() {
         global $db_host, $db_name, $db_prefix;
+        global $mongodb_uri, $mongodb_name;
 
         $host = pp_env('DB_HOST') ?: pp_env('MONGODB_URI') ?: pp_env('MONGO_URL');
 
@@ -82,6 +83,9 @@
             $db_host   = $host;
             $db_name   = pp_env('DB_NAME', 'piprapay');
             $db_prefix = '';
+            
+            $mongodb_uri  = $host;
+            $mongodb_name = $db_name;
             return true;
         }
 
