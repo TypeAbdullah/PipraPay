@@ -84,6 +84,10 @@
                         'email' => $adminEmail, 
                         'password' => $hashedPass, 
                         'temp_password' => $temp_password, 
+                        'status' => 'active',
+                        '2fa_status' => 'disable',
+                        '2fa_secret' => '--',
+                        'type' => 'admin',
                         'created_date' => getCurrentDatetime('Y-m-d H:i:s'), 
                         'updated_date' => getCurrentDatetime('Y-m-d H:i:s')
                     ];
@@ -93,6 +97,7 @@
                         'brand_id' => $brand_id, 
                         'a_id' => $a_id, 
                         'permission' => json_encode(permissionSchema()), 
+                        'status' => 'active',
                         'created_date' => getCurrentDatetime('Y-m-d H:i:s'), 
                         'updated_date' => getCurrentDatetime('Y-m-d H:i:s')
                     ];
