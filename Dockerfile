@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     libmagickwand-dev \
     libzip-dev \
     libonig-dev \
+    libssl-dev \
+    pkg-config \
     zip \
     unzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
