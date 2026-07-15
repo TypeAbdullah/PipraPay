@@ -365,8 +365,68 @@
         return $value;
     }   
 
-    function getData($tableName, $filter = [], $options = []) {
+    function getData($tableName, $filter = [], $projection = null, $params = null) {
         $db = connectDatabase();
+
+        // ── Legacy SQL-style call detection ──
+        // Old callers use: getData('table', 'WHERE col = :col ...', '* FROM', [':col' => val])
+        // New callers use: getData('table', ['col' => val], $options)
+        if (is_string($filter)) {
+            $mongoFilter = [];
+            $mongoOptions = [];
+
+            if (is_array($params) && !empty($params)) {
+                // Parse the SQL WHERE string into MongoDB filter pairs
+                // Remove leading WHERE keyword
+                $where = preg_replace('/^\s*WHERE\s+/i', '', trim($filter));
+
+                // Strip ORDER BY / LIMIT (MongoDB handles these separately)
+                $where = preg_replace('/\s+ORDER\s+BY\s+.*/i', '', $where);
+                $limitMatch = [];
+                if (preg_match('/\s+LIMIT\s+(\d+)/i', $where, $limitMatch)) {
+                    $mongoOptions['limit'] = (int) $limitMatch[1];
+                }
+                $where = preg_replace('/\s+LIMIT\s+\d+/i', '', $where);
+
+                // Split on AND
+                $conditions = preg_split('/\s+AND\s+/i', $where);
+                foreach ($conditions as $cond) {
+                    $cond = trim($cond);
+                    if ($cond === '' || $cond === '1') continue;
+
+                    // Match patterns like: column = :placeholder  or  column = "value"
+                    if (preg_match('/^[`]?(\w+)[`]?\s*=\s*[:]([\w]+)$/i', $cond, $m)) {
+                        $col = $m[1];
+                        $placeholder = ':' . $m[2];
+                        if (array_key_exists($placeholder, $params)) {
+                            $mongoFilter[$col] = $params[$placeholder];
+                        }
+                    } elseif (preg_match('/^[`]?(\w+)[`]?\s*=\s*["\'](.+?)["\']$/i', $cond, $m)) {
+                        $mongoFilter[$m[1]] = $m[2];
+                    }
+                }
+            } else {
+                // No params — the WHERE string may contain inline values
+                $where = preg_replace('/^\s*WHERE\s+/i', '', trim($filter));
+                $where = preg_replace('/\s+ORDER\s+BY\s+.*/i', '', $where);
+                $where = preg_replace('/\s+LIMIT\s+\d+/i', '', $where);
+
+                $conditions = preg_split('/\s+AND\s+/i', $where);
+                foreach ($conditions as $cond) {
+                    $cond = trim($cond);
+                    if ($cond === '' || $cond === '1') continue;
+                    if (preg_match('/^[`]?(\w+)[`]?\s*=\s*["\'](.+?)["\']$/i', $cond, $m)) {
+                        $mongoFilter[$m[1]] = $m[2];
+                    }
+                }
+            }
+
+            $filter  = $mongoFilter;
+            $options = $mongoOptions;
+        } else {
+            // New-style call: getData('table', [...filter], [...options])
+            $options = is_array($projection) ? $projection : [];
+        }
 
         try {
             $collection = $db->$tableName;
@@ -400,10 +460,19 @@
         }
     }
 
-    function insertData($tableName, $document) {
+
+    function insertData($tableName, $columnsOrDocument, $values = null) {
         $db = connectDatabase(); 
 
         try {
+            // Legacy call: insertData('table', ['col1','col2'], ['val1','val2'])
+            // New call:    insertData('table', ['col1' => 'val1', 'col2' => 'val2'])
+            if ($values !== null && is_array($columnsOrDocument) && is_array($values)) {
+                $document = array_combine($columnsOrDocument, $values);
+            } else {
+                $document = $columnsOrDocument;
+            }
+
             $collection = $db->$tableName;
             $result = $collection->insertOne($document);
             return $result->getInsertedCount() === 1;
@@ -413,10 +482,35 @@
         }
     }
 
-    function updateData($tableName, $updateFields, $filter) {
+    function updateData($tableName, $columnsOrFields, $valuesOrFilter = null, $condition = null) {
         $db = connectDatabase(); 
 
         try {
+            // Legacy call: updateData('table', ['col1','col2'], ['val1','val2'], "WHERE id = 'x'")
+            // New call:    updateData('table', ['col1' => 'val1'], ['id' => 'x'])
+            if ($condition !== null && is_array($columnsOrFields) && is_array($valuesOrFilter)) {
+                // Old-style: $columnsOrFields = column names, $valuesOrFilter = values, $condition = SQL WHERE
+                $updateFields = array_combine($columnsOrFields, $valuesOrFilter);
+                
+                // Parse the SQL condition string into a MongoDB filter
+                $mongoFilter = [];
+                $where = preg_replace('/^\s*WHERE\s+/i', '', trim((string) $condition));
+                $where = preg_replace('/\s+ORDER\s+BY\s+.*/i', '', $where);
+                $conditions = preg_split('/\s+AND\s+/i', $where);
+                foreach ($conditions as $cond) {
+                    $cond = trim($cond);
+                    if ($cond === '' || $cond === '1') continue;
+                    if (preg_match('/^[`]?(\w+)[`]?\s*=\s*["\'](.+?)["\']$/i', $cond, $m)) {
+                        $mongoFilter[$m[1]] = $m[2];
+                    }
+                }
+                $filter = $mongoFilter;
+            } else {
+                // New-style: $columnsOrFields = update doc, $valuesOrFilter = filter doc
+                $updateFields = $columnsOrFields;
+                $filter = is_array($valuesOrFilter) ? $valuesOrFilter : [];
+            }
+
             $collection = $db->$tableName;
             $result = $collection->updateMany(
                 $filter,
