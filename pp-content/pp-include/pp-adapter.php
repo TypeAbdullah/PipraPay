@@ -487,6 +487,7 @@ aa021689e729dc2302b47e9bdc7d1a9f8b72f95f01530da35bf3b848b188d5b1
                                 $doc = [
                                     'a_id' => $response['response'][0]['a_id'], 
                                     'cookie' => $cookie, 
+                                    'status' => 'active',
                                     'browser' => $userInfo['browser'], 
                                     'device' => $userInfo['device'], 
                                     'ip' => $userInfo['ip_address'], 
